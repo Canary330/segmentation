@@ -1,0 +1,13 @@
+1/biomolecules-10-01526-with-cover.md
+1/MobileUNet-FPN_A_Semantic_Segmentation_Model_for_Fetal_Ultrasound_Four-Chamber_Segmentation_in_Edge_Computing_Environments.md
+1/Assessment of Transcatheter or Surgical Closure of Atrial SeptalDefect using Interpretable Deep Keypoint Stadiometry.md
+1/2505.11872v3.md
+1/s12938-024-01230-2.md
+1/2502.14807v3.md
+1/2407.09979v1.md
+1/基于两级分割的胎儿四腔心超声切面质量评测.md
+2/面向胎儿心脏的分割分类辅助诊断系统的设计与实现_许志诚.md
+2/面向类别不平衡的胎儿心脏超声图像分割算法.md
+2/基于U-Net的超声左心室分析方法研究_文鑫.md
+3/人工智能在先天性心脏病影像诊断中应用研究进展_吴云潇潇.md
+3/人工智能自动识别胎儿心脏超声标准切面的研究_吴慧玲(2).md
