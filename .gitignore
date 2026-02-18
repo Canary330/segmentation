@@ -1,0 +1,49 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode
+
+# macOS folder attributes
+Icon?
+__MACOSX/
+
+# Thumbnails
+._*
+
+# Files that might appear on external disks
+.Spotlight-V100
+.Trashes
+
+# macOS cache files
+*.swp
+*.lock
+*.pyc
+*.pyo
+*.out
+*.class
+
+# macOS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.macos
+
+# General backup files
+*.bak
+*.tmp
+*.old
+*.orig
+*.swp
+*.swo
+*.swn
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.~*
