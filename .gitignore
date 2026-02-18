@@ -1,3 +1,20 @@
+# FastAPI后端忽略项
+flutter/fastapi_backend/__pycache__/
+flutter/fastapi_backend/*.pyc
+flutter/fastapi_backend/venv/
+flutter/fastapi_backend/.env
+
+# Flutter前端忽略项
+flutter/flutter_frontend/.dart_tool/
+flutter/flutter_frontend/build/
+flutter/flutter_frontend/ios/Pods/
+flutter/flutter_frontend/ios/.symlinks/
+flutter/flutter_frontend/android/.gradle/
+flutter/flutter_frontend/android/app/build/
+flutter/flutter_frontend/android/build/
+flutter/flutter_frontend/.idea/
+flutter/flutter_frontend/vscode/
+
 # macOS system files
 .DS_Store
 .AppleDouble
@@ -47,3 +64,6 @@ __MACOSX/
 *.tmp
 *.temp
 *.~*
+
+#上传数据集到公开的GitHub仓库时，添加以下内容，以避免上传敏感信息和不必要的文件：
+FOCUS-dataset/
