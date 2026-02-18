@@ -64,3 +64,6 @@ __MACOSX/
 *.tmp
 *.temp
 *.~*
+
+#上传数据集到公开的GitHub仓库时，添加以下内容，以避免上传敏感信息和不必要的文件：
+FOCUS-dataset/
