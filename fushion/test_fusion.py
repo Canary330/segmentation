@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 from fusion_model import CLIPFusionModel
 
-SEG_CKPT_PATH = "D:\code\segmentation\evaluation_results\best.pth"
+SEG_CKPT_PATH = "../evaluation_results/best.pth"
 # ===================== 新手可选改 =====================
 TEST_IMG_PATH = "./test.jpg"  # 测试图片路径（放一张图片到仓库根目录，命名为test.jpg）
 TEXT_PROMPT = "medical image"  # 文本提示（适配医疗图像分割，可改）
