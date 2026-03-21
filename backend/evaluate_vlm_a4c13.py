@@ -11,9 +11,9 @@ from tqdm import tqdm
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as TF
 
-from pure_visual.class_maps import A4C_13_CLASSES
-from vlm_backend.model import build_model_from_checkpoint
-from vlm_backend.prompt_templates import get_prompts_for_label
+from backend.pure_visual.class_maps import A4C_13_CLASSES
+from backend.vlm_backend.model import build_model_from_checkpoint
+from backend.vlm_backend.prompt_templates import get_prompts_for_label
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)

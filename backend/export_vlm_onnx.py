@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-from vlm_backend.model import build_model_from_checkpoint
+from backend.vlm_backend.model import PromptableMobileUNetFPN, build_model_from_checkpoint
 
 
 class OnnxPromptableWrapper(torch.nn.Module):

@@ -26,16 +26,16 @@
 
 - 接收超声图像
 - 输出 `13` 类语义分割结果
-- 为 `train.py` 提供模型定义
+- 为 `backend/train.py` 提供模型定义
 - 为视觉语言模型提供可继承的视觉结构参考
 
 ## 这个目录在整个项目中的位置
 
 从项目流程看，`pure_visual` 负责的是第一阶段：
 
-1. 先用 `train.py` 在 `prepared/a4c13` 上训练纯视觉模型
+1. 先用 `backend/train.py` 在 `prepared/a4c13` 上训练纯视觉模型
 2. 得到纯视觉最佳权重
-3. 后续 `train_vlm.py` 可以把这份纯视觉权重加载进提示式模型
+3. 后续 `backend/train_vlm.py` 可以把这份纯视觉权重加载进提示式模型
 
 也就是说：
 
@@ -44,6 +44,6 @@
 
 ## 对应的主要入口
 
-- 训练入口：[train.py](/Users/mico/Documents/za/git/segmentation/train.py)
+- 训练入口：[backend/train.py](/Users/mico/Documents/za/git/segmentation/backend/train.py)
 - 类别评估会间接使用这里的类别定义
 - VLM 融合模型会复用这里的视觉能力

@@ -1,122 +1,99 @@
-# 顶层 Python 文件说明
+# 关键 Python 入口文件说明
 
-这个文件专门解释仓库根目录下那些“不在文件夹里”的 Python 文件分别是干什么的。
+仓库重构后，主线 Python 入口基本都已经集中到 `backend/`。
 
-当前根目录下的 Python 文件有：
+当前最重要的入口文件有：
 
-- `train.py`
-- `train_vlm.py`
-- `evaluate_vlm_a4c13.py`
-- `export_vlm_onnx.py`
+- `backend/train.py`
+- `backend/train_vlm.py`
+- `backend/evaluate_vlm_a4c13.py`
+- `backend/export_vlm_onnx.py`
 - `test.py`
 
-## `train.py`
+## `backend/train.py`
 
-这是纯视觉基线训练入口。
+这是纯视觉 `MobileUNet-FPN` 的训练入口。
 
-它的作用是：
+作用：
 
 - 读取 `prepared/a4c13`
-- 训练 `MobileUNet-FPN`
-- 输出纯视觉最佳权重和训练历史
+- 训练纯视觉 `13` 类分割模型
+- 输出纯视觉最佳权重
 
-什么时候用它：
+适用场景：
 
-- 想复现纯视觉基线
-- 想重新得到视觉初始化权重
-- 想做纯视觉对照实验
+- 复现纯视觉基线
+- 重新生成视觉初始化权重
+- 做对照实验
 
-对应模块：
+## `backend/train_vlm.py`
 
-- [pure_visual/mobileunet_fpn.py](/Users/mico/Documents/za/git/segmentation/pure_visual/mobileunet_fpn.py)
+这是提示式视觉语言模型训练入口，也是当前后端大模型主线训练脚本。
 
-## `train_vlm.py`
-
-这是提示式视觉语言模型训练入口，也是当前项目后端大模型部分最重要的训练脚本。
-
-它的作用是：
+作用：
 
 - 读取 `prepared/prompt_seg`
 - 训练 `Promptable MobileUNet-FPN`
-- 支持 `CLIP` 文本编码器
-- 支持 `LoRA` 微调
-- 支持加载纯视觉权重初始化
-- 支持先辅助预训练、再目标域精调
+- 接入文本编码器
+- 做 `LoRA` 微调
+- 支持纯视觉权重初始化
+- 支持辅助预训练和目标域精调
 
-什么时候用它：
+适用场景：
 
-- 想复现当前最优申报书对齐结果
-- 想继续做多模态实验
+- 复现当前最优结果
+- 继续做申报书路线实验
 
-对应模块：
+## `backend/evaluate_vlm_a4c13.py`
 
-- [vlm_backend/model.py](/Users/mico/Documents/za/git/segmentation/vlm_backend/model.py)
-- [vlm_backend/data.py](/Users/mico/Documents/za/git/segmentation/vlm_backend/data.py)
+这是把提示式模型重新组合回 A4C `13` 类并计算指标的评估入口。
 
-## `evaluate_vlm_a4c13.py`
+作用：
 
-这是提示式模型回到 `13` 类整体评估时的脚本。
+- 遍历 `13` 个结构提示词
+- 生成 `13` 类掩码
+- 计算 `IoU`、`Dice`
 
-它的作用是：
+适用场景：
 
-- 对每个结构跑 prompt 分割
-- 把结果重新组合成 `13` 类掩码
-- 计算 `IoU`、`Dice` 等指标
+- 产出最终汇报用结果
+- 验证某个 `best.pt` 是否达到预期
 
-什么时候用它：
+## `backend/export_vlm_onnx.py`
 
-- 想验证某个 `best.pt` 在 `13` 类测试集上的表现
-- 想生成最终汇报用指标
+这是提示式模型导出 `ONNX` 的入口。
 
-## `export_vlm_onnx.py`
+作用：
 
-这是把提示式模型导出成 `ONNX` 的脚本。
-
-它的作用是：
-
-- 读取训练好的提示式模型权重
+- 读取训练好的提示式模型
 - 导出部署格式模型
 
-什么时候可能用它：
+适用场景：
 
-- 后续想做跨平台部署
-- 想把模型接到别的推理环境
+- 想做额外部署尝试
+- 想接别的推理系统
 
-当前项目里它不是主线必需文件，但建议保留，因为后续部署可能会用到。
+这个文件不是当前主线必需，但建议保留。
 
 ## `test.py`
 
-这个文件不是当前主线实验的一部分，更像是早期遗留的独立测试脚本。
+这是旧流程遗留的独立测试脚本，不属于当前主线。
 
-从内容看，它是：
+特点：
 
-- 基于 `segmentation_models_pytorch`
-- 用旧数据目录结构做评估和可视化
-- 针对单一类别或旧任务流程
-
-它和当前主线的关系是：
-
-- 不是当前最优结果的生成脚本
-- 不参与当前 `13` 类提示式模型训练
+- 使用旧数据结构
+- 使用旧的单任务评估方式
 - 不参与当前前后端联调
 
-所以现在的建议是：
+建议：
 
-- 可以保留，作为历史参考
-- 但不要把它当成当前主线复现入口
+- 保留作历史参考
+- 不要把它当成当前项目的正式入口
 
-## 推荐优先级
+## 推荐关注顺序
 
-如果你现在是为了继续项目，建议按下面顺序关注这些文件：
-
-1. `train_vlm.py`
-2. `train.py`
-3. `evaluate_vlm_a4c13.py`
-4. `export_vlm_onnx.py`
+1. `backend/train_vlm.py`
+2. `backend/train.py`
+3. `backend/evaluate_vlm_a4c13.py`
+4. `backend/export_vlm_onnx.py`
 5. `test.py`
-
-也就是说：
-
-- 前三个是主线
-- 第四个是可选部署工具
-- 第五个是历史遗留参考

@@ -44,7 +44,7 @@
 
 - 把 `13` 类目标域数据转换成提示式样本
 - 把公开辅助数据映射到统一标签空间
-- 为 `train_vlm.py` 提供可直接训练的数据
+- 为 `backend/train_vlm.py` 提供可直接训练的数据
 
 ## 这个目录在整个项目中的位置
 
@@ -52,12 +52,12 @@
 
 1. 先运行 `prepare_cvat_segmentation.py`
 2. 再运行 `prepare_prompt_seg_data.py`
-3. 之后才进入 `train.py` 和 `train_vlm.py`
+3. 之后才进入 `backend/train.py` 和 `backend/train_vlm.py`
 
 如果以后更换服务器、重做实验或者新增数据，这个目录通常都是最先需要运行的部分。
 
 ## 对应的主要入口
 
-- [prepare_cvat_segmentation.py](/Users/mico/Documents/za/git/segmentation/scripts/prepare_cvat_segmentation.py)
-- [prepare_prompt_seg_data.py](/Users/mico/Documents/za/git/segmentation/scripts/prepare_prompt_seg_data.py)
+- [prepare_cvat_segmentation.py](/Users/mico/Documents/za/git/segmentation/backend/scripts/prepare_cvat_segmentation.py)
+- [prepare_prompt_seg_data.py](/Users/mico/Documents/za/git/segmentation/backend/scripts/prepare_prompt_seg_data.py)
 - 总复现说明：[README.md](/Users/mico/Documents/za/git/segmentation/README.md)

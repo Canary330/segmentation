@@ -27,15 +27,15 @@
 
 ## 新增的主要文件
 
-- `scripts/prepare_prompt_seg_data.py`
+- `backend/scripts/prepare_prompt_seg_data.py`
 - `vlm_backend/label_spaces.py`
 - `vlm_backend/prompt_templates.py`
 - `vlm_backend/lora.py`
 - `vlm_backend/model.py`
 - `vlm_backend/data.py`
-- `train_vlm.py`
-- `export_vlm_onnx.py`
-- `flutter/fastapi_backend/main.py`
+- `backend/train_vlm.py`
+- `backend/export_vlm_onnx.py`
+- `backend/api/main.py`
 
 ## 数据来源与使用方式
 
@@ -67,7 +67,7 @@
 先生成目标域多类掩码：
 
 ```bash
-python3 scripts/prepare_cvat_segmentation.py \
+python3 backend/scripts/prepare_cvat_segmentation.py \
   --preset a4c13_poly \
   --dataset-root FOCUS-dataset \
   --output-root prepared/a4c13 \
@@ -77,7 +77,7 @@ python3 scripts/prepare_cvat_segmentation.py \
 再生成统一 prompt 数据：
 
 ```bash
-python3 scripts/prepare_prompt_seg_data.py \
+python3 backend/scripts/prepare_prompt_seg_data.py \
   --a4c-root prepared/a4c13 \
   --public-root "/Users/mico/Downloads/Fetal Echocardiography Second Trimester" \
   --output-root prepared/prompt_seg \
@@ -89,7 +89,7 @@ python3 scripts/prepare_prompt_seg_data.py \
 阶段一，辅助预训练：
 
 ```bash
-python3 train_vlm.py \
+python3 backend/train_vlm.py \
   --data-root prepared/prompt_seg \
   --experiment-dir experiments/vlm_prompt_seg_stage1 \
   --text-encoder openai/clip-vit-base-patch32 \
@@ -105,7 +105,7 @@ python3 train_vlm.py \
 阶段二，目标域精调：
 
 ```bash
-python3 train_vlm.py \
+python3 backend/train_vlm.py \
   --data-root prepared/prompt_seg \
   --experiment-dir experiments/vlm_prompt_seg_stage2 \
   --text-encoder openai/clip-vit-base-patch32 \
@@ -121,7 +121,7 @@ python3 train_vlm.py \
 更贴近申报书最终版的做法：
 
 ```bash
-python3 train_vlm.py \
+python3 backend/train_vlm.py \
   --data-root prepared/prompt_seg \
   --experiment-dir experiments/vlm_prompt_seg_stage2 \
   --text-encoder openai/clip-vit-large-patch14 \
@@ -139,7 +139,7 @@ python3 train_vlm.py \
 阶段三，回到 `13` 类整体验证：
 
 ```bash
-python3 evaluate_vlm_a4c13.py \
+python3 backend/evaluate_vlm_a4c13.py \
   --checkpoint experiments/vlm_prompt_seg_stage2/best.pt \
   --data-root prepared/a4c13 \
   --split validation \
@@ -159,7 +159,7 @@ FastAPI 接口支持：
 ```bash
 export SEGMENTATION_MODEL_PATH=/abs/path/to/best.pt
 export SEGMENTATION_TEXT_ENCODER=openai/clip-vit-base-patch32
-uvicorn flutter.fastapi_backend.main:app --host 0.0.0.0 --port 8000
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
 ```
 
 `/predict` 输入：

@@ -10,15 +10,15 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from vlm_backend.label_spaces import (
+from backend.vlm_backend.label_spaces import (
     PUBLIC_SECOND_TRIMESTER_LABEL_MAP,
     TARGET_A4C_LABELS,
 )
-from vlm_backend.prompt_templates import sample_prompt
+from backend.vlm_backend.prompt_templates import sample_prompt
 
 
 def parse_args() -> argparse.Namespace:

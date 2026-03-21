@@ -11,8 +11,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from vlm_backend.data import PromptSegmentationDataset
-from vlm_backend.model import (
+from backend.vlm_backend.data import PromptSegmentationDataset
+from backend.vlm_backend.model import (
     PromptableMobileUNetFPN,
     load_pure_visual_checkpoint_into_prompt_model,
 )

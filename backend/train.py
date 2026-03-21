@@ -16,7 +16,7 @@ from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
-from pure_visual.mobileunet_fpn import MobileUNetFPN
+from backend.pure_visual.mobileunet_fpn import MobileUNetFPN
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         "--data-root",
         type=Path,
         default=Path("prepared/a4c13"),
-        help="Prepared dataset root created by scripts/prepare_cvat_segmentation.py",
+        help="Prepared dataset root created by backend/scripts/prepare_cvat_segmentation.py",
     )
     parser.add_argument(
         "--experiment-dir",
@@ -83,7 +83,7 @@ def load_summary(data_root: Path) -> dict:
     summary_path = data_root / "summary.json"
     if not summary_path.exists():
         raise FileNotFoundError(
-            f"Missing {summary_path}. Run scripts/prepare_cvat_segmentation.py first."
+            f"Missing {summary_path}. Run backend/scripts/prepare_cvat_segmentation.py first."
         )
     return json.loads(summary_path.read_text(encoding="utf-8"))
 

@@ -9,11 +9,11 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from pure_visual.class_maps import PRESETS, build_label_to_id, canonicalize_label
+from backend.pure_visual.class_maps import PRESETS, build_label_to_id, canonicalize_label
 
 
 def parse_args() -> argparse.Namespace:

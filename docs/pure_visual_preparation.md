@@ -20,7 +20,7 @@
 先把 CVAT XML 转成语义分割掩码：
 
 ```bash
-python3 scripts/prepare_cvat_segmentation.py \
+python3 backend/scripts/prepare_cvat_segmentation.py \
   --preset a4c13_poly \
   --dataset-root FOCUS-dataset \
   --output-root prepared/a4c13 \
@@ -46,7 +46,7 @@ prepared/a4c13/
 ## 训练命令
 
 ```bash
-python3 train.py \
+python3 backend/train.py \
   --data-root prepared/a4c13 \
   --experiment-dir experiments/a4c13_mobileunet_fpn \
   --epochs 120 \
@@ -66,7 +66,7 @@ python3 train.py \
 
 ## 上云前检查
 
-- 安装 `requirements-train.txt`
+- 安装 `backend/requirements.txt`
 - 确认 GPU 可用
 - 把 `FOCUS-dataset/` 和 `标注/` 同步到云端
 - 先运行一次数据转换脚本，再启动训练

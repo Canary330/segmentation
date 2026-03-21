@@ -51,7 +51,7 @@
 
 - 读取 `prepared/prompt_seg/*.jsonl`
 - 加载图像、提示词和二值 mask
-- 提供给 `train_vlm.py` 直接训练
+- 提供给 `backend/train_vlm.py` 直接训练
 
 ### `model.py`
 
@@ -71,9 +71,9 @@
 
 1. `scripts/` 先准备 prompt 数据
 2. `vlm_backend/` 定义如何读取数据、如何组织 prompt、如何做 LoRA、如何构建模型
-3. `train_vlm.py` 调用这里的代码完成训练
-4. `evaluate_vlm_a4c13.py` 调用这里的代码完成 `13` 类评估
-5. `flutter/fastapi_backend/main.py` 调用这里的代码完成在线推理
+3. `backend/train_vlm.py` 调用这里的代码完成训练
+4. `backend/evaluate_vlm_a4c13.py` 调用这里的代码完成 `13` 类评估
+5. `backend/api/main.py` 调用这里的代码完成在线推理
 
 也就是说，这个目录是连接“训练、评估、部署”三件事的公共后端核心。
 
