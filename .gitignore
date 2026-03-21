@@ -1,19 +1,20 @@
-# FastAPI后端忽略项
-flutter/fastapi_backend/__pycache__/
-flutter/fastapi_backend/*.pyc
-flutter/fastapi_backend/venv/
-flutter/fastapi_backend/.env
+# 后端忽略项
+backend/__pycache__/
+backend/**/*.pyc
+backend/.venv/
+backend/venv/
+backend/.env
 
-# Flutter前端忽略项
-flutter/flutter_frontend/.dart_tool/
-flutter/flutter_frontend/build/
-flutter/flutter_frontend/ios/Pods/
-flutter/flutter_frontend/ios/.symlinks/
-flutter/flutter_frontend/android/.gradle/
-flutter/flutter_frontend/android/app/build/
-flutter/flutter_frontend/android/build/
-flutter/flutter_frontend/.idea/
-flutter/flutter_frontend/vscode/
+# Flutter 前端忽略项
+frontend/flutter_frontend/.dart_tool/
+frontend/flutter_frontend/build/
+frontend/flutter_frontend/ios/Pods/
+frontend/flutter_frontend/ios/.symlinks/
+frontend/flutter_frontend/android/.gradle/
+frontend/flutter_frontend/android/app/build/
+frontend/flutter_frontend/android/build/
+frontend/flutter_frontend/.idea/
+frontend/flutter_frontend/vscode/
 
 # macOS system files
 .DS_Store
@@ -71,3 +72,4 @@ FOCUS-dataset/
 Fetal Echocardiography Second Trimester/
 prepared/
 experiments/
+server_artifacts/
