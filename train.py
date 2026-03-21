@@ -1,173 +1,494 @@
-import os
-import cv2
+from __future__ import annotations
+
+import argparse
+import json
+import random
+from pathlib import Path
+from typing import Iterable
+
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from PIL import Image, ImageEnhance
 from torch.utils.data import DataLoader, Dataset
-import segmentation_models_pytorch as smp
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms import functional as TF
+from tqdm import tqdm
 
-# 1. 压榨性能配置
+from pure_visual.mobileunet_fpn import MobileUNetFPN
 
-TRAIN_DIR = './dataset/training'
-VAL_DIR = './dataset/validation'
-ENCODER = 'mobilenet_v2'
-ENCODER_WEIGHTS = 'imagenet'
-CLASSES = 1
-ACTIVATION = 'sigmoid'
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# ⚡️ 核心改动 1: 分辨率提升到 512
-IMG_SIZE = 512
-# ⚡️ 核心改动 2: 显存不够就改小这个 (比如 4)
-BATCH_SIZE = 4
-LR = 0.0003
-
-# ⚡️ 修改点 1: 轮数改为 200
-EPOCHS = 200
-TARGET_TYPE = 'cardiac'
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
-# 2. 增强策略 (保持强力)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Train MobileUNet-FPN on the prepared fetal A4C segmentation dataset."
+    )
+    parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=Path("prepared/a4c13"),
+        help="Prepared dataset root created by scripts/prepare_cvat_segmentation.py",
+    )
+    parser.add_argument(
+        "--experiment-dir",
+        type=Path,
+        default=Path("experiments/a4c13_mobileunet_fpn"),
+        help="Directory for checkpoints and metrics.",
+    )
+    parser.add_argument("--epochs", type=int, default=120)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--img-size", type=int, default=512)
+    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--fpn-channels", type=int, default=128)
+    parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--pretrained-backbone", action="store_true")
+    parser.add_argument("--amp", action="store_true", help="Enable mixed precision on CUDA.")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+    )
+    return parser.parse_args()
 
-train_transform = A.Compose([
-    A.Resize(IMG_SIZE, IMG_SIZE),
-    A.HorizontalFlip(p=0.5),
-    A.Rotate(limit=20, p=0.5),
-    A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.15, rotate_limit=0, p=0.5),
-    A.GaussNoise(p=0.2),
-    A.OpticalDistortion(distort_limit=0.05, p=0.2),
-    A.OneOf([
-        A.RandomBrightnessContrast(p=1),
-        A.RandomGamma(p=1),
-    ], p=0.3),
-    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-    ToTensorV2(),
-])
 
-val_transform = A.Compose([
-    A.Resize(IMG_SIZE, IMG_SIZE),
-    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-    ToTensorV2(),
-])
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
-# ============================
-# 3. 数据集 (Dataset)
-# ============================
-class UltimateDataset(Dataset):
-    def __init__(self, root_dir, transform=None):
-        self.root_dir = root_dir
-        self.transform = transform
-        self.images_dir = os.path.join(root_dir, 'images')
-        self.masks_dir = os.path.join(root_dir, 'annfiles_mask')
-        self.ids = [f for f in os.listdir(self.images_dir) if f.endswith('.png')]
+def resolve_device(device_arg: str) -> torch.device:
+    if device_arg == "cuda":
+        return torch.device("cuda")
+    if device_arg == "mps":
+        return torch.device("mps")
+    if device_arg == "cpu":
+        return torch.device("cpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
-    def __getitem__(self, i):
-        img_name = self.ids[i]
-        img_path = os.path.join(self.images_dir, img_name)
-        mask_name = img_name.replace(".png", f"-{TARGET_TYPE}.png")
-        mask_path = os.path.join(self.masks_dir, mask_name)
 
-        image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+def load_summary(data_root: Path) -> dict:
+    summary_path = data_root / "summary.json"
+    if not summary_path.exists():
+        raise FileNotFoundError(
+            f"Missing {summary_path}. Run scripts/prepare_cvat_segmentation.py first."
+        )
+    return json.loads(summary_path.read_text(encoding="utf-8"))
 
-        if not os.path.exists(mask_path):
-            mask = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-        else:
-            mask = cv2.imread(mask_path, 0)
 
-        mask = mask.astype('float32')
-        mask[mask < 127] = 0.0
-        mask[mask >= 127] = 1.0
+class A4CSegmentationDataset(Dataset):
+    def __init__(self, split_root: Path, image_size: int, train: bool) -> None:
+        self.image_dir = split_root / "images"
+        self.mask_dir = split_root / "masks"
+        self.image_size = image_size
+        self.train = train
+        self.image_paths = sorted(self.image_dir.glob("*.png"))
+        if not self.image_paths:
+            raise FileNotFoundError(f"No images found under {self.image_dir}")
 
-        if self.transform:
-            augmented = self.transform(image=image, mask=mask)
-            image = augmented['image']
-            mask = augmented['mask']
+    def __len__(self) -> int:
+        return len(self.image_paths)
 
-        mask = mask.unsqueeze(0)
+    def _augment(self, image: Image.Image, mask: Image.Image) -> tuple[Image.Image, Image.Image]:
+        if random.random() < 0.5:
+            image = TF.hflip(image)
+            mask = TF.hflip(mask)
+
+        if random.random() < 0.8:
+            angle = random.uniform(-12.0, 12.0)
+            max_shift = int(round(self.image_size * 0.04))
+            translate = (
+                random.randint(-max_shift, max_shift),
+                random.randint(-max_shift, max_shift),
+            )
+            scale = random.uniform(0.95, 1.05)
+            image = TF.affine(
+                image,
+                angle=angle,
+                translate=translate,
+                scale=scale,
+                shear=[0.0, 0.0],
+                interpolation=InterpolationMode.BILINEAR,
+                fill=0,
+            )
+            mask = TF.affine(
+                mask,
+                angle=angle,
+                translate=translate,
+                scale=scale,
+                shear=[0.0, 0.0],
+                interpolation=InterpolationMode.NEAREST,
+                fill=0,
+            )
+
+        if random.random() < 0.3:
+            image = ImageEnhance.Brightness(image).enhance(random.uniform(0.9, 1.1))
+        if random.random() < 0.3:
+            image = ImageEnhance.Contrast(image).enhance(random.uniform(0.9, 1.1))
+
         return image, mask
 
-    def __len__(self):
-        return len(self.ids)
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+        image_path = self.image_paths[index]
+        mask_path = self.mask_dir / image_path.name
+        if not mask_path.exists():
+            raise FileNotFoundError(f"Missing mask for {image_path.name}: {mask_path}")
+
+        image = Image.open(image_path).convert("RGB")
+        mask = Image.open(mask_path).convert("L")
+
+        if self.train:
+            image, mask = self._augment(image, mask)
+
+        image = TF.resize(
+            image,
+            [self.image_size, self.image_size],
+            interpolation=InterpolationMode.BILINEAR,
+        )
+        mask = TF.resize(
+            mask,
+            [self.image_size, self.image_size],
+            interpolation=InterpolationMode.NEAREST,
+        )
+
+        image_tensor = TF.to_tensor(image)
+        image_tensor = TF.normalize(image_tensor, IMAGENET_MEAN, IMAGENET_STD)
+        mask_tensor = torch.from_numpy(np.array(mask, dtype=np.int64))
+        return image_tensor, mask_tensor
 
 
-def calculate_iou(pred_mask, true_mask):
-    pred_mask = (pred_mask > 0.5).float()
-    intersection = (pred_mask * true_mask).sum()
-    union = pred_mask.sum() + true_mask.sum() - intersection
-    if union == 0: return 1.0
-    return intersection / union
+class MulticlassDiceLoss(nn.Module):
+    def __init__(self, num_classes: int, smooth: float = 1.0, ignore_background: bool = True) -> None:
+        super().__init__()
+        self.num_classes = num_classes
+        self.smooth = smooth
+        self.ignore_background = ignore_background
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        probs = torch.softmax(logits, dim=1)
+        one_hot = F.one_hot(targets, num_classes=self.num_classes).permute(0, 3, 1, 2).float()
+
+        if self.ignore_background:
+            probs = probs[:, 1:]
+            one_hot = one_hot[:, 1:]
+
+        dims = (0, 2, 3)
+        intersection = (probs * one_hot).sum(dim=dims)
+        cardinality = probs.sum(dim=dims) + one_hot.sum(dim=dims)
+        dice = (2.0 * intersection + self.smooth) / (cardinality + self.smooth)
+        return 1.0 - dice.mean()
 
 
+def update_confusion_matrix(
+    confusion: torch.Tensor,
+    predictions: torch.Tensor,
+    targets: torch.Tensor,
+    num_classes: int,
+) -> torch.Tensor:
+    predictions = predictions.view(-1)
+    targets = targets.view(-1)
+    valid = (targets >= 0) & (targets < num_classes)
+    indices = num_classes * targets[valid] + predictions[valid]
+    confusion += torch.bincount(indices, minlength=num_classes**2).view(num_classes, num_classes)
+    return confusion
 
-# 4. 主程序
 
-if __name__ == '__main__':
-    train_ds = UltimateDataset(TRAIN_DIR, transform=train_transform)
-    val_ds = UltimateDataset(VAL_DIR, transform=val_transform)
+def compute_segmentation_metrics(
+    confusion: torch.Tensor,
+    class_names: Iterable[str],
+) -> dict:
+    confusion = confusion.float()
+    tp = torch.diag(confusion)
+    fp = confusion.sum(dim=0) - tp
+    fn = confusion.sum(dim=1) - tp
 
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
+    iou = tp / (tp + fp + fn + 1e-7)
+    dice = 2 * tp / (2 * tp + fp + fn + 1e-7)
+    class_names = list(class_names)
 
-    print(f"🔥 MobileNetV2 极限挑战开始！分辨率: {IMG_SIZE}x{IMG_SIZE}, 目标: Min IoU > 0.87")
+    metrics = {
+        "mean_iou_all": iou.mean().item(),
+        "mean_dice_all": dice.mean().item(),
+        "per_class_iou": {},
+        "per_class_dice": {},
+    }
 
-    model = smp.FPN(
-        encoder_name=ENCODER,
-        encoder_weights=ENCODER_WEIGHTS,
-        classes=CLASSES,
-        activation=ACTIVATION
+    if len(class_names) > 1:
+        metrics["mean_iou_fg"] = iou[1:].mean().item()
+        metrics["mean_dice_fg"] = dice[1:].mean().item()
+    else:
+        metrics["mean_iou_fg"] = metrics["mean_iou_all"]
+        metrics["mean_dice_fg"] = metrics["mean_dice_all"]
+
+    for idx, class_name in enumerate(class_names):
+        metrics["per_class_iou"][class_name] = round(iou[idx].item(), 6)
+        metrics["per_class_dice"][class_name] = round(dice[idx].item(), 6)
+
+    return metrics
+
+
+def train_one_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    ce_loss: nn.Module,
+    dice_loss: nn.Module,
+    scaler: torch.cuda.amp.GradScaler,
+    device: torch.device,
+    use_amp: bool,
+) -> float:
+    model.train()
+    running_loss = 0.0
+    progress = tqdm(loader, desc="train", leave=False)
+
+    for images, masks in progress:
+        images = images.to(device)
+        masks = masks.to(device)
+        optimizer.zero_grad(set_to_none=True)
+
+        with torch.autocast(device_type=device.type, enabled=use_amp):
+            logits = model(images)
+            loss = 0.5 * ce_loss(logits, masks) + 0.5 * dice_loss(logits, masks)
+
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
+        running_loss += loss.item() * images.size(0)
+        progress.set_postfix(loss=f"{loss.item():.4f}")
+
+    return running_loss / len(loader.dataset)
+
+
+@torch.no_grad()
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    ce_loss: nn.Module,
+    dice_loss: nn.Module,
+    device: torch.device,
+    use_amp: bool,
+    class_names: list[str],
+) -> dict:
+    model.eval()
+    total_loss = 0.0
+    num_classes = len(class_names)
+    confusion = torch.zeros((num_classes, num_classes), dtype=torch.int64)
+
+    progress = tqdm(loader, desc="eval", leave=False)
+    for images, masks in progress:
+        images = images.to(device)
+        masks = masks.to(device)
+
+        with torch.autocast(device_type=device.type, enabled=use_amp):
+            logits = model(images)
+            loss = 0.5 * ce_loss(logits, masks) + 0.5 * dice_loss(logits, masks)
+
+        total_loss += loss.item() * images.size(0)
+        predictions = torch.argmax(logits, dim=1).cpu()
+        confusion = update_confusion_matrix(confusion, predictions, masks.cpu(), num_classes)
+
+    metrics = compute_segmentation_metrics(confusion, class_names)
+    metrics["loss"] = total_loss / len(loader.dataset)
+    return metrics
+
+
+def save_checkpoint(
+    checkpoint_path: Path,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.cuda.amp.GradScaler,
+    epoch: int,
+    args: argparse.Namespace,
+    class_names: list[str],
+    metrics: dict,
+) -> None:
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scaler": scaler.state_dict(),
+            "epoch": epoch,
+            "args": {
+                key: str(value) if isinstance(value, Path) else value
+                for key, value in vars(args).items()
+            },
+            "class_names": class_names,
+            "metrics": metrics,
+        },
+        checkpoint_path,
     )
-    model.to(DEVICE)
 
-    loss_fn = smp.losses.JaccardLoss(smp.losses.BINARY_MODE, from_logits=False)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=15, T_mult=2)
 
-    best_iou = 0.0
+def main() -> None:
+    args = parse_args()
+    set_seed(args.seed)
 
-    for epoch in range(EPOCHS):
-        model.train()
-        train_loss = 0
-        for images, masks in train_loader:
-            images, masks = images.to(DEVICE), masks.to(DEVICE)
+    summary = load_summary(args.data_root)
+    foreground_classes = summary["class_names"]
+    class_names = ["background", *foreground_classes]
+    num_classes = len(class_names)
 
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = loss_fn(outputs, masks)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
+    train_dataset = A4CSegmentationDataset(args.data_root / "training", args.img_size, train=True)
+    val_dataset = A4CSegmentationDataset(args.data_root / "validation", args.img_size, train=False)
+    test_dataset = A4CSegmentationDataset(args.data_root / "testing", args.img_size, train=False)
 
-        model.eval()
+    device = resolve_device(args.device)
+    use_amp = args.amp and device.type == "cuda"
 
-        # ⚡️ 修改点 2: 改为收集所有单张图片的 IoU，以便计算 Min IoU
-        val_ious = []
-        with torch.no_grad():
-            for images, masks in val_loader:
-                images, masks = images.to(DEVICE), masks.to(DEVICE)
-                outputs = model(images)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=device.type == "cuda",
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=device.type == "cuda",
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=device.type == "cuda",
+    )
 
-                # 必须计算 Batch 中每一张图的 IoU，而不是整个 Batch 的 IoU
-                for i in range(images.size(0)):
-                    single_pred = outputs[i:i + 1]
-                    single_mask = masks[i:i + 1]
-                    single_iou = calculate_iou(single_pred, single_mask).item()
-                    val_ious.append(single_iou)
+    model = MobileUNetFPN(
+        num_classes=num_classes,
+        fpn_channels=args.fpn_channels,
+        dropout=args.dropout,
+        pretrained_backbone=args.pretrained_backbone,
+    ).to(device)
 
+    ce_loss = nn.CrossEntropyLoss()
+    dice_loss = MulticlassDiceLoss(num_classes=num_classes)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+
+    args.experiment_dir.mkdir(parents=True, exist_ok=True)
+    history: list[dict] = []
+    best_score = -1.0
+
+    print(f"Training samples: {len(train_dataset)}")
+    print(f"Validation samples: {len(val_dataset)}")
+    print(f"Testing samples: {len(test_dataset)}")
+    print(f"Classes: {class_names}")
+    print(f"Device: {device}")
+
+    for epoch in range(1, args.epochs + 1):
+        train_loss = train_one_epoch(
+            model=model,
+            loader=train_loader,
+            optimizer=optimizer,
+            ce_loss=ce_loss,
+            dice_loss=dice_loss,
+            scaler=scaler,
+            device=device,
+            use_amp=use_amp,
+        )
+        val_metrics = evaluate(
+            model=model,
+            loader=val_loader,
+            ce_loss=ce_loss,
+            dice_loss=dice_loss,
+            device=device,
+            use_amp=use_amp,
+            class_names=class_names,
+        )
         scheduler.step()
 
-        # 计算统计指标
-        avg_val_iou = sum(val_ious) / len(val_ious)
-        min_val_iou = min(val_ious)  # 找出这一轮的“最短板”
+        epoch_record = {
+            "epoch": epoch,
+            "train_loss": round(train_loss, 6),
+            **{k: round(v, 6) if isinstance(v, float) else v for k, v in val_metrics.items()},
+        }
+        history.append(epoch_record)
+        (args.experiment_dir / "history.json").write_text(
+            json.dumps(history, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
         print(
-            f"Epoch [{epoch + 1}/{EPOCHS}] Loss: {train_loss / len(train_loader):.4f} | Val IoU: {avg_val_iou:.4f} | Min IoU: {min_val_iou:.4f}")
+            f"Epoch {epoch:03d} | "
+            f"train_loss={train_loss:.4f} | "
+            f"val_loss={val_metrics['loss']:.4f} | "
+            f"val_mIoU_fg={val_metrics['mean_iou_fg']:.4f} | "
+            f"val_mDice_fg={val_metrics['mean_dice_fg']:.4f}"
+        )
 
-        if avg_val_iou > best_iou:
-            best_iou = avg_val_iou
-            torch.save(model.state_dict(), 'best_mobile_v2_512.pth')
-            print(f"    🏆 新纪录！Avg IoU: {best_iou:.4f} (Min: {min_val_iou:.4f})")
+        latest_metrics = {
+            "train_loss": train_loss,
+            "validation": val_metrics,
+        }
+        save_checkpoint(
+            args.experiment_dir / "last.pt",
+            model,
+            optimizer,
+            scaler,
+            epoch,
+            args,
+            class_names,
+            latest_metrics,
+        )
 
-    print(f"✅ 挑战结束。最高 Avg IoU: {best_iou:.4f}")
+        if val_metrics["mean_iou_fg"] > best_score:
+            best_score = val_metrics["mean_iou_fg"]
+            save_checkpoint(
+                args.experiment_dir / "best.pt",
+                model,
+                optimizer,
+                scaler,
+                epoch,
+                args,
+                class_names,
+                latest_metrics,
+            )
+
+    best_checkpoint = torch.load(
+        args.experiment_dir / "best.pt",
+        map_location=device,
+        weights_only=False,
+    )
+    model.load_state_dict(best_checkpoint["model"])
+    test_metrics = evaluate(
+        model=model,
+        loader=test_loader,
+        ce_loss=ce_loss,
+        dice_loss=dice_loss,
+        device=device,
+        use_amp=use_amp,
+        class_names=class_names,
+    )
+    (args.experiment_dir / "test_metrics.json").write_text(
+        json.dumps(test_metrics, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    print(
+        "Best validation checkpoint test metrics | "
+        f"test_mIoU_fg={test_metrics['mean_iou_fg']:.4f} | "
+        f"test_mDice_fg={test_metrics['mean_dice_fg']:.4f}"
+    )
+
+
+if __name__ == "__main__":
+    main()

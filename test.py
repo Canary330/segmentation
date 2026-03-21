@@ -36,7 +36,7 @@ model = smp.FPN(
 )
 
 if os.path.exists(MODEL_PATH):
-    model.load_state_dict(torch.load(MODEL_PATH))
+    model.load_state_dict(torch.load(MODEL_PATH, weights_only=False))
     print("✅ 模型权重加载成功！")
 else:
     print(f"❌ 找不到模型文件 {MODEL_PATH}，请检查路径。")

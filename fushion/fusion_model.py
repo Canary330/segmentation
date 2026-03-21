@@ -48,7 +48,7 @@ class CLIPFusionModel(nn.Module):
         """仅加载分割模型的权重，融合层留空（预留结构）"""
         try:
             # 加载仓库.pth文件
-            state_dict = torch.load(ckpt_path, map_location="cpu")
+            state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)
             # 适配多卡训练的权重名（去掉module.前缀）
             new_state_dict = OrderedDict()
             for k, v in state_dict.items():
